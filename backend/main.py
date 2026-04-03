@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     await fetcher.refresh()
     yield
 
-app = FastAPI(title="CarburMap API", lifespan=lifespan)
+app = FastAPI(title="Carbur'Map API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
