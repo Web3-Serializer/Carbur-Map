@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CarburMap — Prédictions</title>
+  <link rel="stylesheet" href="css/app.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"/>
+  <style>
+    body { overflow: auto; }
+    .predict-layout { flex: 1; overflow-y: auto; padding: 1.75rem 2rem; }
+  </style>
+  <script>
+    window.API_BASE = 'http://localhost:8000';
+  </script>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-mark"><i class="bi bi-fuel-pump"></i></div>
+    CarburMap
+    <span class="logo-sub">Prix carburants France</span>
+  </div>
+
+  <nav>
+    <a href="index.html" class="nav-link">
+      <i class="bi bi-map"></i> Carte
+    </a>
+    <a href="predict.html" class="nav-link active">
+      <i class="bi bi-graph-up-arrow"></i> Prédictions
+    </a>
+  </nav>
+
+  <div class="status-pill">
+    <div class="dot"></div>
+    <span>XGBoost Ensemble + Multi-source</span>
+  </div>
+</header>
+
+<div class="app-body">
+  <div class="predict-layout">
+
+    <div class="predict-header">
+      <h2>Prédiction du prix des carburants</h2>
+      <p>Ensemble de 8 modèles XGBoost avec météo, taux de change, calendrier scolaire et 40+ features techniques.</p>
+    </div>
+
+    <div class="predict-controls">
+      <div class="fuel-tabs" id="pred-fuel-tabs">
+        <button class="fuel-tab active" data-fuel="SP95">SP95</button>
+        <button class="fuel-tab" data-fuel="SP98">SP98</button>
+        <button class="fuel-tab" data-fuel="Gazole">Gazole</button>
+        <button class="fuel-tab" data-fuel="E10">E10</button>
+        <button class="fuel-tab" data-fuel="E85">E85</button>
+        <button class="fuel-tab" data-fuel="GPLc">GPLc</button>
+      </div>
+
+      <select class="filter-select" id="pred-dept" style="max-width:140px">
+        <option value="">National</option>
+      </select>
+
+      <select class="filter-select" id="pred-horizon" style="max-width:120px">
+        <option value="3">3 jours</option>
+        <option value="7" selected>7 jours</option>
+        <option value="14">14 jours</option>
+        <option value="30">30 jours</option>
+        <option value="45">45 jours</option>
+        <option value="60">60 jours</option>
+      </select>
+
+      <select class="filter-select" id="pred-depth" style="max-width:140px">
+        <option value="90">90j historique</option>
+        <option value="180" selected>180j historique</option>
+        <option value="365">365j historique</option>
+      </select>
+
+      <select class="filter-select" id="pred-confidence" style="max-width:130px">
+        <option value="80">80% confiance</option>
+        <option value="90">90% confiance</option>
+        <option value="95" selected>95% confiance</option>
+        <option value="99">99% confiance</option>
+      </select>
+
+      <button class="btn btn-primary" id="predict-btn">
+        <i class="bi bi-graph-up-arrow"></i> Calculer la prédiction
+      </button>
+    </div>
+
+    <div id="predict-error" style="display:none;color:var(--red);font-size:.8rem;margin-bottom:1rem;padding:10px 14px;background:rgba(248,113,113,.1);border-radius:8px;border:1px solid rgba(248,113,113,.3)"></div>
+
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-title">Historique et prédiction</div>
+      <div style="height:340px;position:relative">
+        <canvas id="predict-chart"></canvas>
+        <div id="chart-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.82rem">
+          <i class="bi bi-graph-up" style="margin-right:8px;font-size:1.2rem"></i>
+          Lancez une prédiction pour voir le graphique
+        </div>
+      </div>
+    </div>
+
+    <div class="predict-grid">
+      <div class="card">
+        <div class="card-title"><i class="bi bi-cpu"></i> Indicateurs du modèle</div>
+        <div id="model-stats">
+          <div style="color:var(--muted);font-size:.78rem">Aucune prédiction calculée.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><i class="bi bi-bar-chart"></i> Importance des features</div>
+        <div id="feature-importance">
+          <div style="color:var(--muted);font-size:.78rem">Aucune prédiction calculée.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:1rem;margin-bottom:1rem">
+      <div class="card-title"><i class="bi bi-table"></i> Détail des prédictions</div>
+      <div id="predict-table-wrap" style="max-height:400px;overflow-y:auto">
+        <div style="color:var(--muted);font-size:.78rem">Aucune prédiction calculée.</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:0">
+      <div class="card-title"><i class="bi bi-info-circle"></i> Méthodologie</div>
+      <p style="font-size:.78rem;color:var(--muted);line-height:1.7">
+        Le modèle utilise un ensemble de 8 XGBoost entraînés par bootstrap aggregation sur 40+ features :
+        lags de prix (J-1 à J-30), moyennes mobiles (3/7/14/21/30j), EMA, taux de variation,
+        momentum, volatilité, saisonnalité Fourier (hebdo/mensuelle/annuelle),
+        calendrier scolaire et jours fériés, météo locale (Open-Meteo), taux EUR/USD (Frankfurter).
+        Les intervalles de confiance sont calculés à partir de la dispersion de l'ensemble et de l'écart-type résiduel,
+        avec expansion proportionnelle à la racine carrée de l'horizon. Le R² mesure la variance expliquée.
+        Données : API officielle du Ministère de l'Économie.
+      </p>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<script type="module">
+  import { runPrediction, setFuel, setHorizon, setDept, setDepth, setConfidence } from './js/predict.js';
+  import { api } from './js/api.js';
+
+  async function loadDepts() {
+    try {
+      const data = await api.depts();
+      const sel = document.getElementById('pred-dept');
+      data.departments.forEach((d) => {
+        const o = document.createElement('option');
+        o.value = d;
+        o.textContent = 'Dép. ' + d;
+        sel.appendChild(o);
+      });
+    } catch (_) {}
+  }
+
+  document.getElementById('pred-fuel-tabs').addEventListener('click', (e) => {
+    const btn = e.target.closest('.fuel-tab');
+    if (!btn) return;
+    document.querySelectorAll('#pred-fuel-tabs .fuel-tab').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    setFuel(btn.dataset.fuel);
+  });
+
+  document.getElementById('pred-horizon').addEventListener('change', (e) => setHorizon(e.target.value));
+  document.getElementById('pred-dept').addEventListener('change', (e) => setDept(e.target.value));
+  document.getElementById('pred-depth').addEventListener('change', (e) => setDepth(e.target.value));
+  document.getElementById('pred-confidence').addEventListener('change', (e) => setConfidence(e.target.value));
+
+  document.getElementById('predict-btn').addEventListener('click', () => {
+    document.getElementById('predict-chart').style.display = 'block';
+    document.getElementById('chart-placeholder').style.display = 'none';
+    runPrediction();
+  });
+
+  loadDepts();
+</script>
+
+</body>
+</html>
