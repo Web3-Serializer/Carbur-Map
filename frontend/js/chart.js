@@ -13,28 +13,40 @@ const BASE_OPTS = {
   interaction: { intersect: false, mode: 'index' },
 };
 
-function tooltipStyle(color) {
+function tc() {
+  const s = getComputedStyle(document.documentElement);
   return {
-    backgroundColor: '#0d1117',
-    borderColor: '#1c2a3a',
+    s1: s.getPropertyValue('--s1').trim(),
+    border: s.getPropertyValue('--border').trim(),
+    txt: s.getPropertyValue('--txt').trim(),
+    muted: s.getPropertyValue('--muted').trim(),
+  };
+}
+
+function tooltipStyle(color) {
+  const t = tc();
+  return {
+    backgroundColor: t.s1,
+    borderColor: t.border,
     borderWidth: 1,
-    titleColor: '#dde6f0',
-    bodyColor: color,
+    titleColor: t.txt,
+    bodyColor: color || t.txt,
   };
 }
 
 function scaleStyle() {
+  const t = tc();
   return {
     x: {
-      grid: { color: '#1c2a3a33' },
-      ticks: { color: '#4a6278', font: { family: 'Syne', size: 10 }, maxTicksLimit: 7 },
+      grid: { color: t.border + '33' },
+      ticks: { color: t.muted, font: { family: 'Syne', size: 10 }, maxTicksLimit: 7 },
     },
     y: {
-      grid: { color: '#1c2a3a55' },
+      grid: { color: t.border + '55' },
       ticks: {
-        color: '#4a6278',
+        color: t.muted,
         font: { family: 'IBM Plex Mono', size: 10 },
-        callback: (v) => (v !== null ? v.toFixed(3) : "—") + '€',
+        callback: (v) => (v !== null ? v.toFixed(3) : '—') + '€',
       },
     },
   };
@@ -99,7 +111,70 @@ export function renderHistoryChart(history, fuel) {
         ...BASE_OPTS.plugins,
         tooltip: {
           ...tooltipStyle(color),
-          callbacks: { label: (c) => ` ${c.dataset.label}: ${c.parsed.y.toFixed(3) ?? "—"} €/L` },
+          callbacks: { label: (c) => ` ${c.dataset.label}: ${c.parsed.y?.toFixed(3) ?? '—'} €/L` },
+        },
+      },
+      scales: scaleStyle(),
+    },
+  });
+}
+
+export function renderCompareChart(datasets) {
+  const canvas = document.getElementById('history-chart');
+  if (!canvas) return;
+
+  if (histChart) { histChart.destroy(); histChart = null; }
+
+  const allDates = new Set();
+  datasets.forEach((d) => d.history.forEach((h) => allDates.add(h.date)));
+  const sorted = [...allDates].sort();
+
+  const labels = sorted.map((d) => {
+    return new Date(d).toLocaleDateString('fr', { day: '2-digit', month: 'short' });
+  });
+
+  const t = tc();
+
+  const chartDatasets = datasets
+    .filter((d) => d.history.length > 0)
+    .map((d) => {
+      const color = FUEL_COLOR[d.fuel] || '#e8ff47';
+      const dateMap = {};
+      d.history.forEach((h) => { dateMap[h.date] = h.avg; });
+      return {
+        label: d.fuel,
+        data: sorted.map((date) => dateMap[date] ?? null),
+        borderColor: color,
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        pointRadius: 1,
+        pointHoverRadius: 4,
+        pointBackgroundColor: color,
+        tension: 0.4,
+        spanGaps: true,
+      };
+    });
+
+  histChart = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets: chartDatasets },
+    options: {
+      ...BASE_OPTS,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: {
+            color: t.txt,
+            font: { family: 'Syne', size: 9, weight: '700' },
+            boxWidth: 10,
+            boxHeight: 3,
+            padding: 8,
+          },
+        },
+        tooltip: {
+          ...tooltipStyle(),
+          callbacks: { label: (c) => ` ${c.dataset.label}: ${c.parsed.y?.toFixed(3) ?? '—'} €/L` },
         },
       },
       scales: scaleStyle(),
@@ -129,8 +204,10 @@ export function renderPredictChart(result, fuel) {
     hist[hist.length - 1].avg,
     ...preds.map((p) => p.pred),
   ];
-  const lowData  = [...new Array(hist.length - 1).fill(null), hist[hist.length - 1].avg, ...preds.map((p) => p.low)];
+  const lowData = [...new Array(hist.length - 1).fill(null), hist[hist.length - 1].avg, ...preds.map((p) => p.low)];
   const highData = [...new Array(hist.length - 1).fill(null), hist[hist.length - 1].avg, ...preds.map((p) => p.high)];
+
+  const t = tc();
 
   predictChart = new Chart(canvas.getContext('2d'), {
     type: 'line',
@@ -170,7 +247,7 @@ export function renderPredictChart(result, fuel) {
         {
           label: 'Historique',
           data: [...histData, ...new Array(preds.length).fill(null)],
-          borderColor: '#dde6f0',
+          borderColor: t.txt,
           backgroundColor: 'transparent',
           borderWidth: 2,
           pointRadius: 2,

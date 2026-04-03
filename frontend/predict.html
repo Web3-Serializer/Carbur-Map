@@ -3,24 +3,19 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>CarburMap - Prédictions</title>
+  <title>Carbur'Map</title>
   <link rel="stylesheet" href="css/app.css"/>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"/>
   <style>
     body { overflow: auto; }
     .predict-layout { flex: 1; overflow-y: auto; padding: 1.75rem 2rem; }
   </style>
-  <script>
-    window.API_BASE = 'https://carbur-map.onrender.com';
-  </script>
 </head>
 <body>
 
 <header>
   <div class="logo">
-    <div class="logo-mark"><i class="bi bi-fuel-pump"></i></div>
-    CarburMap
-    <span class="logo-sub">Prix carburants France</span>
+    Carbur<span class="logo-accent">'</span>Map
   </div>
 
   <nav>
@@ -30,11 +25,14 @@
     <a href="predict.html" class="nav-link active">
       <i class="bi bi-graph-up-arrow"></i> Prédictions
     </a>
+    <button class="theme-toggle" id="theme-toggle" aria-label="Changer le thème">
+      <i class="bi bi-sun"></i>
+    </button>
   </nav>
 
   <div class="status-pill">
     <div class="dot"></div>
-    <span>XGBoost Ensemble + Multi-source</span>
+    <span>Prédiction</span>
   </div>
 </header>
 
@@ -42,8 +40,8 @@
   <div class="predict-layout">
 
     <div class="predict-header">
-      <h2>Prédiction du prix des carburants</h2>
-      <p>Ensemble de 8 modèles XGBoost avec météo, taux de change, calendrier scolaire et 40+ features techniques.</p>
+      <h2>Prédiction des prix</h2>
+      <p>Anticipez l'évolution des prix carburants en France.</p>
     </div>
 
     <div class="predict-controls">
@@ -126,13 +124,10 @@
     <div class="card" style="margin-top:0">
       <div class="card-title"><i class="bi bi-info-circle"></i> Méthodologie</div>
       <p style="font-size:.78rem;color:var(--muted);line-height:1.7">
-        Le modèle utilise un ensemble de 8 XGBoost entraînés par bootstrap aggregation sur 40+ features :
-        lags de prix (J-1 à J-30), moyennes mobiles (3/7/14/21/30j), EMA, taux de variation,
-        momentum, volatilité, saisonnalité Fourier (hebdo/mensuelle/annuelle),
-        calendrier scolaire et jours fériés, météo locale (Open-Meteo), taux EUR/USD (Frankfurter).
-        Les intervalles de confiance sont calculés à partir de la dispersion de l'ensemble et de l'écart-type résiduel,
-        avec expansion proportionnelle à la racine carrée de l'horizon. Le R² mesure la variance expliquée.
-        Données : API officielle du Ministère de l'Économie.
+        Les prédictions sont basées sur l'historique des prix, la météo locale,
+        les taux de change, le calendrier scolaire et les jours fériés.
+        L'intervalle de confiance s'élargit avec l'horizon pour refléter l'incertitude.
+        Source : API du Ministère de l'Économie (données J-1).
       </p>
     </div>
 
@@ -144,6 +139,26 @@
 <script type="module">
   import { runPrediction, setFuel, setHorizon, setDept, setDepth, setConfidence } from './js/predict.js';
   import { api } from './js/api.js';
+
+  (function initTheme() {
+    const saved = localStorage.getItem('carburmap-theme');
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+    const icon = document.querySelector('#theme-toggle i');
+    if (icon) icon.className = saved === 'light' ? 'bi bi-moon' : 'bi bi-sun';
+  })();
+
+  document.getElementById('theme-toggle').addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme');
+    const next = current === 'light' ? 'dark' : 'light';
+    if (next === 'dark') {
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', next);
+    }
+    localStorage.setItem('carburmap-theme', next);
+    const icon = document.querySelector('#theme-toggle i');
+    icon.className = next === 'light' ? 'bi bi-moon' : 'bi bi-sun';
+  });
 
   async function loadDepts() {
     try {

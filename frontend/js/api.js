@@ -1,4 +1,7 @@
-const API_BASE = window.API_BASE || 'http://localhost:8000';
+const API_BASE =
+  window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:8000'
+    : 'https://carbur-map.onrender.com';
 
 async function apiFetch(path, params = {}) {
   const url = new URL(API_BASE + path);
@@ -6,7 +9,7 @@ async function apiFetch(path, params = {}) {
     if (v !== null && v !== undefined && v !== '') url.searchParams.set(k, v);
   });
   const r = await fetch(url.toString());
-  if (!r.ok) throw new Error(`API error ${r.status}: ${await r.text()}`);
+  if (!r.ok) throw new Error(`Erreur ${r.status}`);
   return r.json();
 }
 

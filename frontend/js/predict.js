@@ -150,7 +150,7 @@ function renderPredictTable(predictions) {
       <tr>
         <td>${d}</td>
         <td style="color:var(--acc);font-family:var(--mono)">${pred} €</td>
-        <td style="color:var(--muted);font-family:var(--mono)">${low} — ${high} €</td>
+        <td style="color:var(--muted);font-family:var(--mono)">${low} / ${high} €</td>
       </tr>`;
     })
     .join('');

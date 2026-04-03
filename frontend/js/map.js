@@ -1,12 +1,18 @@
 import { api } from './api.js';
-import { renderHistoryChart } from './chart.js';
+import { renderHistoryChart, renderCompareChart } from './chart.js';
 
 const FUEL_COLOR = {
   SP95: '#38bdf8', SP98: '#a78bfa', Gazole: '#e8ff47',
   E10: '#4ade80',  E85: '#f472b6',  GPLc: '#fb923c',
 };
 
+const ALL_FUELS = ['SP95', 'SP98', 'Gazole', 'E10', 'E85', 'GPLc'];
+
 let map, cluster;
+let geoMarker = null;
+let userPos = null;
+let comparing = false;
+
 let state = {
   fuel: 'SP95',
   dept: '',
@@ -17,7 +23,7 @@ let state = {
 
 export function initMap() {
   map = L.map('map', {
-    center: [46.603354, 1.888334], // centre France
+    center: [46.603354, 1.888334],
     zoom: 6,
     zoomControl: false,
   });
@@ -53,6 +59,18 @@ export function initMap() {
   map.addLayer(cluster);
 }
 
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 function normalizeStation(station) {
   let lat = Number(station.lat);
@@ -67,10 +85,7 @@ function normalizeStation(station) {
     [lat, lng] = [lng, lat];
   }
 
-  if (
-    lat < 41 || lat > 51.5 ||
-    lng < -5.5 || lng > 9.8
-  ) return null;
+  if (lat < 41 || lat > 51.5 || lng < -5.5 || lng > 9.8) return null;
 
   return {
     ...station,
@@ -98,7 +113,10 @@ export async function loadStations() {
     renderMarkers(state.stations);
     updateStats(state.stations);
     renderStationList(state.stations);
-    loadHistoryChart();
+
+    if (!comparing) {
+      loadHistoryChart();
+    }
 
     setStatus('ok', `${state.stations.length.toLocaleString('fr')} stations`);
   } catch (e) {
@@ -129,7 +147,7 @@ function renderMarkers(stations) {
         padding:2px 5px;font-size:9.5px;font-weight:700;
         font-family:'IBM Plex Mono',monospace;white-space:nowrap;
         box-shadow:0 2px 8px rgba(0,0,0,.5);
-      ">${s.price.toFixed(3) ?? "—"}</div>`,
+      ">${s.price.toFixed(3) ?? '—'}</div>`,
       className: '',
       iconSize: null,
       iconAnchor: [22, 12],
@@ -140,23 +158,30 @@ function renderMarkers(stations) {
 
     const priceRows = Object.entries(s.prices || {})
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([k, v]) => `
+      .map(
+        ([k, v]) => `
         <div class="popup-price">
           <div class="popup-fuel" style="color:${FUEL_COLOR[k] || '#4a6278'}">${k}</div>
-          <div class="popup-val" style="color:${FUEL_COLOR[k] || '#dde6f0'}">${Number(v).toFixed(3) ?? "—"} €</div>
-        </div>`)
+          <div class="popup-val" style="color:${FUEL_COLOR[k] || '#dde6f0'}">${Number(v).toFixed(3) ?? '—'} €</div>
+        </div>`,
+      )
       .join('');
 
-    const badge = s.pop === 'A'
-      ? '<span class="popup-badge" style="color:#4ade80">Autoroute</span>'
-      : s.pop === 'R' ? '<span class="popup-badge">Routier</span>' : '';
+    const badge =
+      s.pop === 'A'
+        ? '<span class="popup-badge" style="color:#4ade80">Autoroute</span>'
+        : s.pop === 'R'
+          ? '<span class="popup-badge">Routier</span>'
+          : '';
 
-    m.bindPopup(`
-      <div class="popup-inner">
+    m.bindPopup(
+      `<div class="popup-inner">
         <div class="popup-title">${s.ville || 'Station'} ${badge}</div>
-        <div class="popup-addr"><i class="bi bi-geo-alt"></i> ${s.adresse || ''} — ${s.cp || ''}</div>
+        <div class="popup-addr"><i class="bi bi-geo-alt"></i> ${s.adresse || ''}, ${s.cp || ''}</div>
         <div class="popup-prices">${priceRows}</div>
-      </div>`, { maxWidth: 280 });
+      </div>`,
+      { maxWidth: 280 },
+    );
 
     m.on('click', () => highlightStation(s.id));
     return m;
@@ -164,7 +189,6 @@ function renderMarkers(stations) {
 
   cluster.addLayers(markers);
 
-  // 🔥 Recentrage automatique sur la France / résultats
   if (bounds.length === 1) {
     map.setView(bounds[0], 12);
   } else if (bounds.length > 1) {
@@ -182,27 +206,42 @@ function updateStats(stations) {
   const mx = Math.max(...prices);
   const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
 
-  document.getElementById('stat-min').textContent  = mn.toFixed(3) ?? "—";
-  document.getElementById('stat-max').textContent  = mx.toFixed(3) ?? "—";
-  document.getElementById('stat-avg').textContent  = avg.toFixed(3) ?? "—";
+  document.getElementById('stat-min').textContent = mn.toFixed(3) ?? '—';
+  document.getElementById('stat-max').textContent = mx.toFixed(3) ?? '—';
+  document.getElementById('stat-avg').textContent = avg.toFixed(3) ?? '—';
   document.getElementById('stat-count').textContent = stations.length.toLocaleString('fr');
 }
 
 function renderStationList(stations) {
-  const top = [...stations].slice(0, 30);
-  const list = document.getElementById('station-list');
+  let list = [...stations];
 
-  list.innerHTML = top.map((s, i) => `
+  if (userPos) {
+    list = list.map((s) => ({
+      ...s,
+      dist: haversine(userPos.lat, userPos.lng, s.lat, s.lng),
+    }));
+    list.sort((a, b) => a.dist - b.dist);
+  }
+
+  const top = list.slice(0, 30);
+  const el = document.getElementById('station-list');
+
+  el.innerHTML = top
+    .map((s, i) => {
+      const distLabel = s.dist != null ? `<span style="color:var(--blue);margin-left:6px">${s.dist.toFixed(1)} km</span>` : '';
+      return `
     <div class="station-item" data-id="${s.id}" onclick="window.mapModule.flyTo('${s.id}')">
       <div>
         <div class="station-name">
           <span style="color:var(--muted);font-size:.62rem;margin-right:4px">#${i + 1}</span>
-          ${s.ville || 'CP ' + s.cp}
+          ${s.ville || 'CP ' + s.cp}${distLabel}
         </div>
         <div class="station-sub">${s.adresse || s.cp || ''}</div>
       </div>
-      <div class="station-price">${s.price.toFixed(3) ?? "—"} €</div>
-    </div>`).join('');
+      <div class="station-price">${s.price.toFixed(3) ?? '—'} €</div>
+    </div>`;
+    })
+    .join('');
 }
 
 export function flyTo(id) {
@@ -226,6 +265,77 @@ async function loadHistoryChart() {
   } catch (_) {}
 }
 
+export async function loadCompareChart() {
+  const sub = document.getElementById('chart-sub');
+  if (sub) sub.textContent = 'Comparaison multi-carburants';
+
+  try {
+    const results = await Promise.all(
+      ALL_FUELS.map((f) => api.history({ fuel: f, days: state.histDays, dept: state.dept })),
+    );
+    const datasets = ALL_FUELS.map((f, i) => ({ fuel: f, history: results[i] }));
+    renderCompareChart(datasets);
+  } catch (_) {}
+}
+
+export function toggleCompare() {
+  comparing = !comparing;
+  const btn = document.getElementById('compare-btn');
+  if (btn) {
+    btn.classList.toggle('active', comparing);
+  }
+
+  if (comparing) {
+    loadCompareChart();
+  } else {
+    const sub = document.getElementById('chart-sub');
+    if (sub) sub.textContent = `Prix moyen ${state.fuel}`;
+    loadHistoryChart();
+  }
+}
+
+export function geolocate() {
+  if (!navigator.geolocation) {
+    showToast('Géolocalisation non supportée', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('geo-btn');
+  if (btn) btn.classList.add('loading');
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const { latitude: lat, longitude: lng } = pos.coords;
+      userPos = { lat, lng };
+
+      if (geoMarker) map.removeLayer(geoMarker);
+
+      geoMarker = L.circleMarker([lat, lng], {
+        radius: 10,
+        fillColor: '#38bdf8',
+        fillOpacity: 0.9,
+        color: '#fff',
+        weight: 3,
+      })
+        .addTo(map)
+        .bindPopup('<b>Vous êtes ici</b>')
+        .openPopup();
+
+      map.flyTo([lat, lng], 12, { duration: 1.2 });
+
+      renderStationList(state.stations);
+
+      if (btn) btn.classList.remove('loading');
+      showToast('Stations triées par distance', 'info');
+    },
+    () => {
+      if (btn) btn.classList.remove('loading');
+      showToast('Géolocalisation refusée', 'error');
+    },
+    { enableHighAccuracy: true, timeout: 10000 },
+  );
+}
+
 export function setFuel(fuel) {
   state.fuel = fuel;
   loadStations();
@@ -243,7 +353,11 @@ export function setPop(pop) {
 
 export function setHistDays(days) {
   state.histDays = days;
-  loadHistoryChart();
+  if (comparing) {
+    loadCompareChart();
+  } else {
+    loadHistoryChart();
+  }
 }
 
 export function searchStation(query) {
@@ -253,13 +367,13 @@ export function searchStation(query) {
     (x) =>
       (x.ville && x.ville.toLowerCase().includes(q)) ||
       (x.cp && String(x.cp).startsWith(q)) ||
-      (x.dept && String(x.dept).toLowerCase() === q)
+      (x.dept && String(x.dept).toLowerCase() === q),
   );
   if (s) map.flyTo([s.lat, s.lng], 13, { duration: 1 });
 }
 
 function setStatus(type, text) {
-  const dot  = document.querySelector('.dot');
+  const dot = document.querySelector('.dot');
   const span = document.getElementById('status-text');
   dot.className = 'dot' + (type === 'loading' ? ' loading' : type === 'error' ? ' error' : '');
   if (span) span.textContent = text;
@@ -270,5 +384,7 @@ function showToast(msg, type = 'info') {
   el.textContent = msg;
   el.className = type;
   el.style.display = 'block';
-  setTimeout(() => { el.style.display = 'none'; }, 6000);
+  setTimeout(() => {
+    el.style.display = 'none';
+  }, 6000);
 }
