@@ -1,0 +1,16 @@
+{
+  "name": "Carbur'Map",
+  "short_name": "Carbur'Map",
+  "description": "Comparez les prix des carburants en France en temps réel. Carte interactive, historique et prédictions.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07090f",
+  "theme_color": "#e8ff47",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
