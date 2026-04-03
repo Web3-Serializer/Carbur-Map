@@ -1,7 +1,7 @@
 const API_BASE =
   window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:8000'
-    : 'https://carbur-map.onrender.com';
+    : 'https://api.carburmap.leetcode.agency';
 
 async function apiFetch(path, params = {}) {
   const url = new URL(API_BASE + path);
